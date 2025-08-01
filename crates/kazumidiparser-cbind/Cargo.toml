@@ -1,0 +1,10 @@
+[package]
+name = "kazumidiparser-cbind"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kazumidiparser-core = { path = "../kazumidiparser-core" }
