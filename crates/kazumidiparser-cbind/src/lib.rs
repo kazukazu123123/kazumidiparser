@@ -13,7 +13,7 @@ pub struct KazuMIDIParserHeader {
 
 #[repr(C)]
 pub struct KazuMIDIParserMidiEvent {
-    delta_ns: u64,
+    absolute_ns: u64,
     status: u8,
     data1: u8,
     data2: u8,
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn midiparser_get_events(
     let mut c_events: Vec<KazuMIDIParserMidiEvent> = rust_events
         .iter()
         .map(|event| KazuMIDIParserMidiEvent {
-            delta_ns: event.delta_ns,
+            absolute_ns: event.absolute_ns,
             status: event.status,
             data1: event.data1,
             data2: event.data2,

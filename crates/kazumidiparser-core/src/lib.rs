@@ -13,7 +13,7 @@ pub struct MidiHeader {
 
 #[derive(Debug)]
 pub struct MidiEvent {
-    pub delta_ns: u64,
+    pub absolute_ns: u64,
     pub status: u8,
     pub data1: u8,
     pub data2: u8,
@@ -244,7 +244,7 @@ impl MidiParser {
                     data2,
                 } => {
                     self.events.push(MidiEvent {
-                        delta_ns: elapsed_ns,
+                        absolute_ns: elapsed_ns,
                         status,
                         data1,
                         data2,
