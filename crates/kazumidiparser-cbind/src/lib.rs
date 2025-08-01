@@ -1,4 +1,4 @@
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 
 use kazumidiparser_core::MidiParser;
 
@@ -17,6 +17,8 @@ pub struct KazuMIDIParserMidiEvent {
     status: u8,
     data1: u8,
     data2: u8,
+    sysex_data: *const u8,
+    sysex_len: usize,
 }
 
 #[repr(C)]
@@ -107,14 +109,23 @@ pub unsafe extern "C" fn midiparser_get_events(
 
     let mut c_events: Vec<KazuMIDIParserMidiEvent> = rust_events
         .iter()
-        .map(|event| KazuMIDIParserMidiEvent {
-            absolute_ns: event.absolute_ns,
-            status: event.status,
-            data1: event.data1,
-            data2: event.data2,
+        .map(|event| {
+            let (sysex_data, sysex_len) = if let Some(ref data) = event.sysex_data {
+                (data.as_ptr(), data.len())
+            } else {
+                (std::ptr::null(), 0)
+            };
+
+            KazuMIDIParserMidiEvent {
+                absolute_ns: event.absolute_ns,
+                status: event.status,
+                data1: event.data1,
+                data2: event.data2,
+                sysex_data,
+                sysex_len,
+            }
         })
         .collect();
-
     c_events.shrink_to_fit();
 
     let ptr = c_events.as_mut_ptr();
@@ -139,7 +150,10 @@ pub unsafe extern "C" fn midiparser_get_track_events(
     midiparser_ptr: *mut KazuMIDIParserPtr,
 ) -> KazuMIDIParserAllTrackEventIndices {
     if midiparser_ptr.is_null() {
-        return KazuMIDIParserAllTrackEventIndices { tracks: std::ptr::null(), len: 0 };
+        return KazuMIDIParserAllTrackEventIndices {
+            tracks: std::ptr::null(),
+            len: 0,
+        };
     }
     let midiparser: &MidiParser = unsafe { &*(midiparser_ptr as *mut MidiParser) };
 
@@ -164,22 +178,13 @@ pub unsafe extern "C" fn midiparser_all_track_events_free(
     all_track_events: KazuMIDIParserAllTrackEventIndices,
 ) {
     if !all_track_events.tracks.is_null() {
-        let _ = unsafe { Vec::from_raw_parts(all_track_events.tracks as *mut KazuMIDIParserTrackEventIndices, all_track_events.len, all_track_events.len) };
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn midiparser_get_event_by_index(
-    midiparser_ptr: *mut KazuMIDIParserPtr,
-    index: usize,
-) -> KazuMIDIParserMidiEvent {
-    let midiparser: &MidiParser = unsafe { &*(midiparser_ptr as *mut MidiParser) };
-    let event = &midiparser.events[index];
-    KazuMIDIParserMidiEvent {
-        absolute_ns: event.absolute_ns,
-        status: event.status,
-        data1: event.data1,
-        data2: event.data2,
+        let _ = unsafe {
+            Vec::from_raw_parts(
+                all_track_events.tracks as *mut KazuMIDIParserTrackEventIndices,
+                all_track_events.len,
+                all_track_events.len,
+            )
+        };
     }
 }
 

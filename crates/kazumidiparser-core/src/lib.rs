@@ -18,6 +18,7 @@ pub struct MidiEvent {
     pub data1: u8,
     pub data2: u8,
     pub track_index: u16,
+    pub sysex_data: Option<Vec<u8>>,
 }
 
 pub struct MidiParser {
@@ -30,6 +31,7 @@ pub struct MidiParser {
 enum TempEventData {
     Midi { status: u8, data1: u8, data2: u8 },
     TempoChange { new_tempo_us: u32 },
+    SysEx { data: Vec<u8> },
 }
 
 #[derive(Debug)]
@@ -185,6 +187,25 @@ impl MidiParser {
                         _ => { /* Ignore other meta event */ }
                     }
                     index += length;
+                } else if status == 0xF0 {
+                    // System Exclusive (SysEx) message
+                    let mut sysex_data = Vec::new();
+
+                    // Collect all SysEx data until F7
+                    while index < track_data.len() {
+                        let byte = track_data[index];
+                        index += 1;
+                        sysex_data.push(byte);
+                        if byte == 0xF7 {
+                            break; // End of SysEx
+                        }
+                    }
+
+                    temp_events.push(TempEvent {
+                        absolute_tick,
+                        track_index,
+                        data: TempEventData::SysEx { data: sysex_data },
+                    });
                 } else if status & 0xF0 != 0xF0 {
                     // MIDI channel message
                     if index >= track_data.len() {
@@ -214,7 +235,10 @@ impl MidiParser {
                         },
                     });
                 } else {
-                    // TODO: System message
+                    // Other system messages - skip
+                    if index < track_data.len() {
+                        index += 1;
+                    }
                 }
             }
             println!(
@@ -254,12 +278,24 @@ impl MidiParser {
                         data1,
                         data2,
                         track_index: event.track_index,
+                        sysex_data: None,
                     };
                     self.events.push(midi_event);
                 }
                 TempEventData::TempoChange { new_tempo_us } => {
                     current_tempo_us = new_tempo_us;
                     tick_ns = Self::tempo_to_tick_ns(current_tempo_us, self.header.ppqn);
+                }
+                TempEventData::SysEx { data } => {
+                    let midi_event = MidiEvent {
+                        absolute_ns: elapsed_ns,
+                        status: 0xF0,
+                        data1: 0,
+                        data2: 0,
+                        track_index: event.track_index,
+                        sysex_data: Some(data),
+                    };
+                    self.events.push(midi_event);
                 }
             }
             last_tick = event.absolute_tick;
@@ -274,7 +310,8 @@ impl MidiParser {
     }
 
     pub fn get_track_event_indices(&self) -> Vec<Vec<usize>> {
-        let mut track_event_indices: Vec<Vec<usize>> = vec![Vec::new(); self.header.tracks as usize];
+        let mut track_event_indices: Vec<Vec<usize>> =
+            vec![Vec::new(); self.header.tracks as usize];
         for (index, event) in self.events.iter().enumerate() {
             if (event.track_index as usize) < track_event_indices.len() {
                 track_event_indices[event.track_index as usize].push(index);
