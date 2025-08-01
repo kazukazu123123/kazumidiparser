@@ -11,12 +11,13 @@ pub struct MidiHeader {
     pub ppqn: u16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MidiEvent {
     pub absolute_ns: u64,
     pub status: u8,
     pub data1: u8,
     pub data2: u8,
+    pub track_index: u16,
 }
 
 pub struct MidiParser {
@@ -34,6 +35,7 @@ enum TempEventData {
 #[derive(Debug)]
 struct TempEvent {
     absolute_tick: u64,
+    track_index: u16,
     data: TempEventData,
 }
 
@@ -172,6 +174,7 @@ impl MidiParser {
                                 | (track_data[index + 2] as u32);
                             temp_events.push(TempEvent {
                                 absolute_tick,
+                                track_index,
                                 data: TempEventData::TempoChange { new_tempo_us },
                             });
                         }
@@ -203,6 +206,7 @@ impl MidiParser {
 
                     temp_events.push(TempEvent {
                         absolute_tick,
+                        track_index,
                         data: TempEventData::Midi {
                             status,
                             data1,
@@ -227,6 +231,7 @@ impl MidiParser {
         temp_events.par_sort_by_key(|e| e.absolute_tick);
 
         self.events.clear();
+
         let mut elapsed_ns = 0u64;
         let mut last_tick = 0u64;
         let mut current_tempo_us = 500_000u32;
@@ -243,12 +248,14 @@ impl MidiParser {
                     data1,
                     data2,
                 } => {
-                    self.events.push(MidiEvent {
+                    let midi_event = MidiEvent {
                         absolute_ns: elapsed_ns,
                         status,
                         data1,
                         data2,
-                    });
+                        track_index: event.track_index,
+                    };
+                    self.events.push(midi_event);
                 }
                 TempEventData::TempoChange { new_tempo_us } => {
                     current_tempo_us = new_tempo_us;
@@ -264,5 +271,15 @@ impl MidiParser {
 
     pub fn get_events(&self) -> &Vec<MidiEvent> {
         &self.events
+    }
+
+    pub fn get_track_event_indices(&self) -> Vec<Vec<usize>> {
+        let mut track_event_indices: Vec<Vec<usize>> = vec![Vec::new(); self.header.tracks as usize];
+        for (index, event) in self.events.iter().enumerate() {
+            if (event.track_index as usize) < track_event_indices.len() {
+                track_event_indices[event.track_index as usize].push(index);
+            }
+        }
+        track_event_indices
     }
 }
